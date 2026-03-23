@@ -46,7 +46,11 @@ def build_platform(platform)
         end
         conf.archiver { |ar| ar.command = "#{ar_path}" }
         conf.linker   { |l|  l.command  = "#{cc_path}" }
-        apply_config(conf, "#{CONFIG}")
+        apply_config(conf, "#{CONFIG}", apple: true)
+        # The :clang toolchain inherits :gcc which sets libraries = %w(m).
+        # Apple platforms include math in libSystem — no separate libm exists
+        # for cross-compilation targets (iOS, tvOS, visionOS).
+        conf.linker { |l| l.libraries.delete('m') }
       end
     RUBY
     f.flush

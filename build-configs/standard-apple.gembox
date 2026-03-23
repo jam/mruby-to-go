@@ -1,0 +1,12 @@
+# Standard mruby configuration for Apple cross-compilation targets.
+# Mirrors the 'default' gembox (stdlib + stdlib-ext + stdlib-io + math + metaprog)
+# but omits binary executables (mrbc, mirb, mruby, etc.) which cannot be
+# linked for iOS/tvOS/visionOS cross-compilation targets.
+
+MRuby::GemBox.new do |conf|
+  conf.gembox "stdlib"
+  conf.gembox "stdlib-ext"
+  conf.gembox "stdlib-io"
+  conf.gembox "math"
+  conf.gembox "metaprog"
+end
