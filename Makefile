@@ -2,43 +2,33 @@
 
 .PHONY: all clean apple-minimal apple-standard linux-minimal linux-standard test-macos
 
-VERSION ?= 3.3.0
-
 all: apple-minimal apple-standard
 
-# Download mruby source
-mruby-$(VERSION):
-	@echo "Downloading mruby $(VERSION)..."
-	curl -L https://github.com/mruby/mruby/archive/refs/tags/$(VERSION).tar.gz -o mruby.tar.gz
-	tar -xzf mruby.tar.gz
-	rm mruby.tar.gz
-
 # Build for Apple platforms
-apple-minimal: mruby-$(VERSION)
-	./scripts/build-apple-platforms.sh minimal $(VERSION)
+apple-minimal:
+	./scripts/build-apple-platforms.sh minimal
 
-apple-standard: mruby-$(VERSION)
-	./scripts/build-apple-platforms.sh standard $(VERSION)
+apple-standard:
+	./scripts/build-apple-platforms.sh standard
 
 # Build for Linux
-linux-minimal: mruby-$(VERSION)
-	./scripts/build-linux.sh minimal $(VERSION)
+linux-minimal:
+	./scripts/build-linux.sh minimal
 
-linux-standard: mruby-$(VERSION)
-	./scripts/build-linux.sh standard $(VERSION)
+linux-standard:
+	./scripts/build-linux.sh standard
 
 # Quick test build on macOS only
-test-macos: mruby-$(VERSION)
+test-macos:
 	@echo "Building minimal config for macOS..."
-	cd mruby-$(VERSION) && \
+	cd mruby && \
 		export MRUBY_CONFIG="../build-configs/minimal.rb" && \
 		make clean && \
 		make -j$$(sysctl -n hw.ncpu)
-	@echo "Build successful! Library at: mruby-$(VERSION)/build/host/lib/libmruby.a"
-	@ls -lh mruby-$(VERSION)/build/host/lib/
+	@echo "Build successful! Library at: mruby/build/host/lib/libmruby.a"
+	@ls -lh mruby/build/host/lib/
 
 # Clean everything
 clean:
-	rm -rf build/ build-*/ output/ output-*/
-	rm -rf mruby-*/ *.tar.gz *.zip
+	rm -rf build/ output/ output-linux/
 	@echo "Cleaned"

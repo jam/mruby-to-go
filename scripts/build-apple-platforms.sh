@@ -5,21 +5,13 @@ set -e
 # The mruby build system is complex and this is a first attempt.
 
 CONFIG=${1:-minimal}
-VERSION=${2:-3.3.0}
 
-echo "Building mruby ${VERSION} with ${CONFIG} configuration for Apple platforms..."
+echo "Building mruby with ${CONFIG} configuration for Apple platforms..."
 
 rm -rf build output
 mkdir -p output
 
-if [ ! -d "mruby-${VERSION}" ]; then
-    echo "Downloading mruby ${VERSION}..."
-    curl -L "https://github.com/mruby/mruby/archive/refs/tags/${VERSION}.tar.gz" -o mruby.tar.gz
-    tar -xzf mruby.tar.gz
-    rm mruby.tar.gz
-fi
-
-cd "mruby-${VERSION}"
+cd mruby
 
 build_platform() {
     local PLATFORM=$1
@@ -95,4 +87,4 @@ cd output
 zip -r "mruby-${CONFIG}-apple.xcframework.zip" "mruby-${CONFIG}.xcframework"
 cd ..
 
-echo "Build complete! XCFramework at: output/mruby-${CONFIG}-apple.xcframework.zip"
+echo "Build complete! XCFramework at: output/mruby-${CONFIG}.xcframework.zip"

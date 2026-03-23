@@ -2,22 +2,14 @@
 set -e
 
 CONFIG=${1:-minimal}
-VERSION=${2:-3.3.0}
-ARCH=${3:-$(uname -m)}
+ARCH=${2:-$(uname -m)}
 
-echo "Building mruby ${VERSION} with ${CONFIG} configuration for Linux ${ARCH}..."
+echo "Building mruby with ${CONFIG} configuration for Linux ${ARCH}..."
 
-rm -rf build-linux output-linux
+rm -rf output-linux
 mkdir -p output-linux
 
-if [ ! -d "mruby-${VERSION}" ]; then
-    echo "Downloading mruby ${VERSION}..."
-    curl -L "https://github.com/mruby/mruby/archive/refs/tags/${VERSION}.tar.gz" -o mruby.tar.gz
-    tar -xzf mruby.tar.gz
-    rm mruby.tar.gz
-fi
-
-cd "mruby-${VERSION}"
+cd mruby
 
 export MRUBY_CONFIG="../build-configs/${CONFIG}.rb"
 export CC="gcc"
