@@ -1,3 +1,6 @@
+# mruby build config lock files
+*.rb.lock
+
 # Build outputs
 build/
 build-apple*/
