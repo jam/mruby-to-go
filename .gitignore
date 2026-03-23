@@ -1,6 +1,7 @@
 # Build outputs
 build/
-build-*/
+build-apple*/
+build-linux*/
 output/
 output-*/
 *.xcframework/
