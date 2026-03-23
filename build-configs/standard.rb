@@ -1,12 +1,6 @@
+load File.join(__dir__, 'common.rb')
+
 MRuby::Build.new do |conf|
-  toolchain :clang
-
-  conf.gembox 'default'
-
-  conf.cc do |cc|
-    cc.flags << '-O2'
-    cc.defines << 'MRB_USE_FLOAT32'
-  end
-
-  conf.disable_presym
+  toolchain :gcc
+  apply_config(conf, 'standard')
 end

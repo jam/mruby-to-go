@@ -1,34 +1,39 @@
-# Makefile for mruby-xcframework development
+# Makefile for mruby-to-go local development
 
-.PHONY: all clean apple-minimal apple-standard linux-minimal linux-standard test-macos
+.PHONY: all apple-minimal apple-standard linux-minimal linux-standard \
+        assemble-minimal assemble-standard clean
 
-all: apple-minimal apple-standard
+VERSION ?= $(shell git -C mruby describe --tags --exact-match 2>/dev/null || echo dev)
 
-# Build for Apple platforms
+# ── Build ────────────────────────────────────────────────────────────────────
+
+all: apple-minimal apple-standard linux-minimal linux-standard
+
 apple-minimal:
-	./scripts/build-apple-platforms.sh minimal
+	ruby scripts/build_apple.rb minimal
 
 apple-standard:
-	./scripts/build-apple-platforms.sh standard
+	ruby scripts/build_apple.rb standard
 
-# Build for Linux
+# Uses Docker automatically on non-Linux hosts.
+# Override arch with: LINUX_ARCH=arm64 make linux-minimal
 linux-minimal:
-	./scripts/build-linux.sh minimal
+	ruby scripts/build_linux.rb minimal
 
 linux-standard:
-	./scripts/build-linux.sh standard
+	ruby scripts/build_linux.rb standard
 
-# Quick test build on macOS only
-test-macos:
-	@echo "Building minimal config for macOS..."
-	cd mruby && \
-		export MRUBY_CONFIG="../build-configs/minimal.rb" && \
-		make clean && \
-		make -j$$(sysctl -n hw.ncpu)
-	@echo "Build successful! Library at: mruby/build/host/lib/libmruby.a"
-	@ls -lh mruby/build/host/lib/
+# ── Assemble ─────────────────────────────────────────────────────────────────
+# Run after all build targets. VERSION must be set (e.g. make assemble-minimal VERSION=3.3.0).
 
-# Clean everything
+assemble-minimal:
+	ruby scripts/assemble.rb minimal $(VERSION) --write-package-swift
+
+assemble-standard:
+	ruby scripts/assemble.rb standard $(VERSION)
+
+# ── Clean ────────────────────────────────────────────────────────────────────
+
 clean:
-	rm -rf build/ output/ output-linux/
-	@echo "Cleaned"
+	rm -rf artifacts/ output/ build/
+	@echo "Cleaned."

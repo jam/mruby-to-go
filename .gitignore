@@ -3,14 +3,15 @@
 
 # Build outputs
 build/
-build-apple*/
-build-linux*/
+artifacts/
 output/
 output-*/
+build-apple*/
+build-linux*/
 *.xcframework/
 *.framework/
 
-# mruby source
+# mruby source (legacy curl-download approach)
 mruby-*/
 *.tar.gz
 *.zip

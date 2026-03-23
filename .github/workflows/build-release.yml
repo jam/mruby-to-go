@@ -1,0 +1,160 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mruby_version:
+        description: 'mruby version to build (e.g. 3.3.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Apple platforms (macos-15 runner, Xcode 16) ───────────────────────────
+  build-apple:
+    name: Apple / ${{ matrix.profile }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [minimal, standard]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Pin mruby to ${{ inputs.mruby_version }}
+        run: |
+          git -C mruby fetch --tags --quiet
+          git -C mruby checkout tags/${{ inputs.mruby_version }}
+
+      - name: Build
+        run: ruby scripts/build_apple.rb ${{ matrix.profile }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-${{ matrix.profile }}
+          path: artifacts/${{ matrix.profile }}/
+
+  # ── Linux (native runners per arch) ──────────────────────────────────────
+  build-linux:
+    name: ${{ matrix.arch.platform }} / ${{ matrix.profile }}
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [minimal, standard]
+        arch:
+          - { runner: ubuntu-24.04,     platform: linux-x86_64 }
+          - { runner: ubuntu-24.04-arm, platform: linux-arm64  }
+    runs-on: ${{ matrix.arch.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Pin mruby to ${{ inputs.mruby_version }}
+        run: |
+          git -C mruby fetch --tags --quiet
+          git -C mruby checkout tags/${{ inputs.mruby_version }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc make ruby bison
+
+      - name: Build
+        run: ruby scripts/build_linux.rb ${{ matrix.profile }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch.platform }}-${{ matrix.profile }}
+          path: artifacts/${{ matrix.profile }}/
+
+  # ── Assemble, publish, tag ────────────────────────────────────────────────
+  assemble:
+    name: Assemble and release
+    needs: [build-apple, build-linux]
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Download all artifacts, routing each profile into its own directory.
+      # merge-multiple merges artifacts whose paths don't conflict (Linux x86_64
+      # and Linux arm64 each contribute a different subdirectory).
+      - name: Download minimal artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-minimal'
+          merge-multiple: true
+          path: artifacts/minimal/
+
+      - name: Download standard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-standard'
+          merge-multiple: true
+          path: artifacts/standard/
+
+      # Assemble minimal first so Package.swift is generated for it
+      - name: Assemble minimal
+        run: ruby scripts/assemble.rb minimal ${{ inputs.mruby_version }} --write-package-swift
+
+      - name: Assemble standard
+        run: ruby scripts/assemble.rb standard ${{ inputs.mruby_version }}
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit Package.swift, tag, and push
+        run: |
+          git add Package.swift
+          git commit -m "Release mruby ${{ inputs.mruby_version }} [skip ci]"
+          git tag "v${{ inputs.mruby_version }}"
+          git push origin HEAD:main
+          git push origin "v${{ inputs.mruby_version }}"
+
+      - name: Create GitHub release and upload artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "v${{ inputs.mruby_version }}" \
+            --title "mruby ${{ inputs.mruby_version }}" \
+            --notes "$(cat <<'EOF'
+          Pre-built mruby ${{ inputs.mruby_version }} binaries for Apple and Linux.
+
+          ## Swift Package Manager
+
+          Add to your `Package.swift`:
+          ```swift
+          .package(url: "https://github.com/jam/mruby-to-go", exact: "${{ inputs.mruby_version }}")
+          ```
+
+          The `minimal` profile (core language, no stdio) is the default binary target.
+          For the `standard` profile, use the `.artifactbundleindex` URL from the assets below.
+
+          ## Artifacts
+
+          | File | Description |
+          |------|-------------|
+          | `*.artifactbundleindex` | Per-triple index — SwiftPM downloads only what it needs |
+          | `*.artifactbundle.zip` | Universal bundle — all platforms in one download |
+          | `*-<platform>.artifactbundle.zip` | Single-triple bundle |
+          | `*.xcframework.zip` | XCFramework for direct Xcode use |
+          EOF
+          )" \
+            output/*

@@ -1,0 +1,61 @@
+name: Check for new mruby versions
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # Daily at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Find and trigger new builds
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Fetch mruby tags
+        run: git -C mruby fetch --tags --quiet
+
+      - name: Find versions to build
+        id: find
+        run: |
+          NEW_VERSIONS=$(ruby -e '
+            require "rubygems"
+
+            # mruby release tags: pure semver only (no -rc, -beta, -alpha suffixes)
+            mruby_versions = `git -C mruby tag -l`.split
+              .select  { |t| t.match?(/^\d+\.\d+\.\d+$/) }
+              .map     { |t| Gem::Version.new(t) }
+              .select  { |v| v >= Gem::Version.new("3.3.0") }
+              .sort
+
+            # Our existing release tags (strip leading "v")
+            our_versions = `git tag -l`.split
+              .select { |t| t.match?(/^v\d+\.\d+\.\d+$/) }
+              .map    { |t| Gem::Version.new(t[1..]) }
+
+            puts (mruby_versions - our_versions).map(&:to_s).join(" ")
+          ')
+          echo "versions=$NEW_VERSIONS" >> "$GITHUB_OUTPUT"
+          if [ -n "$NEW_VERSIONS" ]; then
+            echo "New versions to build: $NEW_VERSIONS"
+          else
+            echo "No new versions found."
+          fi
+
+      - name: Trigger builds
+        if: steps.find.outputs.versions != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for VERSION in ${{ steps.find.outputs.versions }}; do
+            echo "Triggering build for mruby $VERSION..."
+            gh workflow run build-release.yml --field mruby_version="$VERSION"
+          done
