@@ -1,0 +1,24 @@
+# Build outputs
+build/
+build-*/
+output/
+output-*/
+*.xcframework/
+*.framework/
+
+# mruby source
+mruby-*/
+*.tar.gz
+*.zip
+
+# macOS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.xcodeproj/
+*.xcworkspace/

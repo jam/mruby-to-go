@@ -1,0 +1,256 @@
+=== FILE: Makefile ===
+# Makefile for mruby-xcframework development
+
+.PHONY: all clean apple-minimal apple-standard linux-minimal linux-standard test-macos
+
+VERSION ?= 3.3.0
+
+all: apple-minimal apple-standard
+
+# Download mruby source
+mruby-$(VERSION):
+	@echo "Downloading mruby $(VERSION)..."
+	curl -L https://github.com/mruby/mruby/archive/refs/tags/$(VERSION).tar.gz -o mruby.tar.gz
+	tar -xzf mruby.tar.gz
+	rm mruby.tar.gz
+
+# Build for Apple platforms
+apple-minimal: mruby-$(VERSION)
+	./scripts/build-apple-platforms.sh minimal $(VERSION)
+
+apple-standard: mruby-$(VERSION)
+	./scripts/build-apple-platforms.sh standard $(VERSION)
+
+# Build for Linux
+linux-minimal: mruby-$(VERSION)
+	./scripts/build-linux.sh minimal $(VERSION)
+
+linux-standard: mruby-$(VERSION)
+	./scripts/build-linux.sh standard $(VERSION)
+
+# Quick test build on macOS only
+test-macos: mruby-$(VERSION)
+	@echo "Building minimal config for macOS..."
+	cd mruby-$(VERSION) && \
+		export MRUBY_CONFIG="../build-configs/minimal.rb" && \
+		make clean && \
+		make -j$$(sysctl -n hw.ncpu)
+	@echo "✅ Build successful! Library at: mruby-$(VERSION)/build/host/lib/libmruby.a"
+	@ls -lh mruby-$(VERSION)/build/host/lib/
+
+# Clean everything
+clean:
+	rm -rf build/ build-*/ output/ output-*/
+	rm -rf mruby-*/ *.tar.gz *.zip
+	@echo "✅ Cleaned"
+
+=== FILE: build-configs/minimal.rb ===
+# FIXME: This needs to be adapted from mruby's build_config/minimal.rb
+# Look at mruby-3.3.0/build_config/minimal.rb for the correct format
+
+MRuby::Build.new do |conf|
+  toolchain :clang
+
+  conf.gembox 'default'
+
+  conf.cc do |cc|
+    cc.flags << '-Os'
+    cc.defines << 'MRB_USE_FLOAT32'
+    cc.defines << 'MRB_GC_TURN_OFF_GENERATIONAL'
+    cc.defines << 'MRB_NO_PRESYM'
+  end
+
+  conf.build_mrblib_only
+  conf.disable_presym
+end
+
+=== FILE: build-configs/standard.rb ===
+# FIXME: This needs to be adapted from mruby's build_config/default.rb
+
+MRuby::Build.new do |conf|
+  toolchain :clang
+
+  conf.gembox 'default'
+
+  conf.gem :core => 'mruby-sprintf'
+  conf.gem :core => 'mruby-print'
+  conf.gem :core => 'mruby-math'
+  conf.gem :core => 'mruby-time'
+  conf.gem :core => 'mruby-struct'
+  conf.gem :core => 'mruby-enum-ext'
+  conf.gem :core => 'mruby-string-ext'
+  conf.gem :core => 'mruby-numeric-ext'
+  conf.gem :core => 'mruby-array-ext'
+  conf.gem :core => 'mruby-hash-ext'
+  conf.gem :core => 'mruby-range-ext'
+  conf.gem :core => 'mruby-proc-ext'
+  conf.gem :core => 'mruby-symbol-ext'
+  conf.gem :core => 'mruby-random'
+  conf.gem :core => 'mruby-object-ext'
+  conf.gem :core => 'mruby-objectspace'
+  conf.gem :core => 'mruby-fiber'
+  conf.gem :core => 'mruby-enumerator'
+  conf.gem :core => 'mruby-enum-lazy'
+  conf.gem :core => 'mruby-toplevel-ext'
+  conf.gem :core => 'mruby-kernel-ext'
+
+  conf.cc do |cc|
+    cc.flags << '-O2'
+    cc.defines << 'MRB_USE_FLOAT32'
+    cc.defines << 'MRB_GC_TURN_OFF_GENERATIONAL'
+    cc.defines << 'MRB_NO_PRESYM'
+  end
+
+  conf.build_mrblib_only
+  conf.disable_presym
+end
+
+=== FILE: scripts/build-apple-platforms.sh ===
+#!/bin/bash
+set -e
+
+# NOTE: This script is untested and will likely need fixes!
+# The mruby build system is complex and this is a first attempt.
+
+CONFIG=${1:-minimal}
+VERSION=${2:-3.3.0}
+
+echo "Building mruby ${VERSION} with ${CONFIG} configuration for Apple platforms..."
+
+rm -rf build output
+mkdir -p output
+
+if [ ! -d "mruby-${VERSION}" ]; then
+    echo "Downloading mruby ${VERSION}..."
+    curl -L "https://github.com/mruby/mruby/archive/refs/tags/${VERSION}.tar.gz" -o mruby.tar.gz
+    tar -xzf mruby.tar.gz
+    rm mruby.tar.gz
+fi
+
+cd "mruby-${VERSION}"
+
+build_platform() {
+    local PLATFORM=$1
+    local SDK=$2
+    local ARCH=$3
+    local MIN_VERSION=$4
+
+    echo "Building for ${PLATFORM} (${ARCH})..."
+
+    export MRUBY_CONFIG="../build-configs/${CONFIG}.rb"
+    export CC="$(xcrun --sdk ${SDK} --find clang)"
+    export AR="$(xcrun --sdk ${SDK} --find ar)"
+    export LD="$CC"
+    export CFLAGS="-arch ${ARCH} -isysroot $(xcrun --sdk ${SDK} --show-sdk-path) -m${PLATFORM}-version-min=${MIN_VERSION}"
+
+    make clean
+    make -j$(sysctl -n hw.ncpu)
+
+    mkdir -p "../build/${PLATFORM}-${ARCH}"
+    cp build/host/lib/libmruby.a "../build/${PLATFORM}-${ARCH}/"
+    if [ ! -d "../build/include" ]; then
+        cp -r include "../build/"
+    fi
+}
+
+# Build for each platform
+build_platform "ios" "iphoneos" "arm64" "16.0"
+build_platform "ios-simulator" "iphonesimulator" "arm64" "16.0"
+build_platform "tvos" "appletvos" "arm64" "16.0"
+build_platform "tvos-simulator" "appletvsimulator" "arm64" "16.0"
+build_platform "xros" "xros" "arm64" "1.0"
+build_platform "xros-simulator" "xrsimulator" "arm64" "1.0"
+
+# Build macOS universal binary
+echo "Building macOS universal binary..."
+export MRUBY_CONFIG="../build-configs/${CONFIG}.rb"
+make clean
+
+export CC="clang"
+export AR="ar"
+export CFLAGS="-arch arm64 -mmacosx-version-min=13.0"
+make -j$(sysctl -n hw.ncpu)
+mkdir -p "../build/macos-arm64"
+cp build/host/lib/libmruby.a "../build/macos-arm64/"
+
+make clean
+export CFLAGS="-arch x86_64 -mmacosx-version-min=13.0"
+make -j$(sysctl -n hw.ncpu)
+mkdir -p "../build/macos-x86_64"
+cp build/host/lib/libmruby.a "../build/macos-x86_64/"
+
+mkdir -p "../build/macos-universal"
+lipo -create \
+    "../build/macos-arm64/libmruby.a" \
+    "../build/macos-x86_64/libmruby.a" \
+    -output "../build/macos-universal/libmruby.a"
+
+cd ..
+
+# Create XCFramework
+echo "Creating XCFramework..."
+xcodebuild -create-xcframework \
+    -library "build/ios-arm64/libmruby.a" -headers "build/include" \
+    -library "build/ios-simulator-arm64/libmruby.a" -headers "build/include" \
+    -library "build/tvos-arm64/libmruby.a" -headers "build/include" \
+    -library "build/tvos-simulator-arm64/libmruby.a" -headers "build/include" \
+    -library "build/xros-arm64/libmruby.a" -headers "build/include" \
+    -library "build/xros-simulator-arm64/libmruby.a" -headers "build/include" \
+    -library "build/macos-universal/libmruby.a" -headers "build/include" \
+    -output "output/mruby-${CONFIG}.xcframework"
+
+cd output
+zip -r "mruby-${CONFIG}-apple.xcframework.zip" "mruby-${CONFIG}.xcframework"
+cd ..
+
+echo "✅ Build complete! XCFramework at: output/mruby-${CONFIG}-apple.xcframework.zip"
+
+=== FILE: scripts/build-linux.sh ===
+#!/bin/bash
+set -e
+
+CONFIG=${1:-minimal}
+VERSION=${2:-3.3.0}
+ARCH=${3:-$(uname -m)}
+
+echo "Building mruby ${VERSION} with ${CONFIG} configuration for Linux ${ARCH}..."
+
+rm -rf build-linux output-linux
+mkdir -p output-linux
+
+if [ ! -d "mruby-${VERSION}" ]; then
+    echo "Downloading mruby ${VERSION}..."
+    curl -L "https://github.com/mruby/mruby/archive/refs/tags/${VERSION}.tar.gz" -o mruby.tar.gz
+    tar -xzf mruby.tar.gz
+    rm mruby.tar.gz
+fi
+
+cd "mruby-${VERSION}"
+
+export MRUBY_CONFIG="../build-configs/${CONFIG}.rb"
+export CC="gcc"
+export AR="ar"
+export LD="gcc"
+
+make clean
+make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
+mkdir -p "../output-linux/linux-${ARCH}"
+cp build/host/lib/libmruby.a "../output-linux/linux-${ARCH}/"
+cp -r include "../output-linux/linux-${ARCH}/"
+
+cd ..
+
+cd output-linux
+tar -czf "mruby-${CONFIG}-linux-${ARCH}.tar.gz" "linux-${ARCH}"
+cd ..
+
+echo "✅ Build complete! Archive at: output-linux/mruby-${CONFIG}-linux-${ARCH}.tar.gz"
+
+=== END ===
+
+Instructions:
+1. Copy the content above for each file into the corresponding file
+2. Make the .sh files executable: chmod +x scripts/*.sh
+3. The build configs (*.rb files) DEFINITELY need to be fixed - they're templates
+4. Test with: make test-macos
